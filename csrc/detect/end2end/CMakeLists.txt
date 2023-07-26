@@ -12,6 +12,7 @@ option(CUDA_USE_STATIC_CUDA_RUNTIME OFF)
 
 # CUDA
 find_package(CUDA REQUIRED)
+set(CUDA_LIBRARIES  /usr/local/cuda-12.2/targets/x86_64-linux/lib)
 message(STATUS "CUDA Libs: \n${CUDA_LIBRARIES}\n")
 message(STATUS "CUDA Headers: \n${CUDA_INCLUDE_DIRS}\n")
 

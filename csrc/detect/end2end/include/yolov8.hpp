@@ -66,6 +66,7 @@ YOLOv8::YOLOv8(const std::string& engine_file_path)
     cudaStreamCreate(&this->stream);
     this->num_bindings = this->engine->getNbBindings();
 
+			printf(" %d num_bindings: %d \n", __LINE__, this->num_bindings);
     for (int i = 0; i < this->num_bindings; ++i) {
         Binding            binding;
         nvinfer1::Dims     dims;
@@ -79,6 +80,7 @@ YOLOv8::YOLOv8(const std::string& engine_file_path)
             this->num_inputs += 1;
             dims         = this->engine->getProfileDimensions(i, 0, nvinfer1::OptProfileSelector::kMAX);
             binding.size = get_size_by_dims(dims);
+			printf(" %d  binding.size: %d \n", __LINE__, binding.size);
             binding.dims = dims;
             this->input_bindings.push_back(binding);
             // set max opt shape

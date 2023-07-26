@@ -4,20 +4,10 @@
 #include "chrono"
 #include "opencv2/opencv.hpp"
 #include "yolov8.hpp"
+#include "uart.hpp"
 
 const std::vector<std::string> CLASS_NAMES = {
-    "person",         "bicycle",    "car",           "motorcycle",    "airplane",     "bus",           "train",
-    "truck",          "boat",       "traffic light", "fire hydrant",  "stop sign",    "parking meter", "bench",
-    "bird",           "cat",        "dog",           "horse",         "sheep",        "cow",           "elephant",
-    "bear",           "zebra",      "giraffe",       "backpack",      "umbrella",     "handbag",       "tie",
-    "suitcase",       "frisbee",    "skis",          "snowboard",     "sports ball",  "kite",          "baseball bat",
-    "baseball glove", "skateboard", "surfboard",     "tennis racket", "bottle",       "wine glass",    "cup",
-    "fork",           "knife",      "spoon",         "bowl",          "banana",       "apple",         "sandwich",
-    "orange",         "broccoli",   "carrot",        "hot dog",       "pizza",        "donut",         "cake",
-    "chair",          "couch",      "potted plant",  "bed",           "dining table", "toilet",        "tv",
-    "laptop",         "mouse",      "remote",        "keyboard",      "cell phone",   "microwave",     "oven",
-    "toaster",        "sink",       "refrigerator",  "book",          "clock",        "vase",          "scissors",
-    "teddy bear",     "hair drier", "toothbrush"};
+    "ambulance", "fire truck", "police car", "baby car", "Off-road vehicles", "race car"};
 
 const std::vector<std::vector<unsigned int>> COLORS = {
     {0, 114, 189},   {217, 83, 25},   {237, 177, 32},  {126, 47, 142},  {119, 172, 48},  {77, 190, 238},
@@ -69,6 +59,30 @@ int main(int argc, char** argv)
         cv::glob(path + "/*.jpg", imagePathList);
     }
 
+	unsigned char  w_buf[2] = {0x0, 0x00};
+	size_t w_len = sizeof(w_buf);
+	unsigned char r_buf[10] = {0};
+	int ret = -1;
+	int fd = -1;
+
+	fd = uart_open("/dev/ttyUSB0");
+	uart_setup(fd, B115200);
+
+#if 0
+	ret = uart_write(fd,w_buf,w_len);
+	if(ret == -1)
+	{
+		fprintf(stderr,"uart write failed!\n");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = uart_read(fd,r_buf,w_len);
+	if(ret == -1)
+	{
+		fprintf(stderr,"uart read failed!\n");
+		exit(EXIT_FAILURE);
+	}
+#endif
     cv::Mat             res, image;
     cv::Size            size = cv::Size{640, 640};
     std::vector<Object> objs;
@@ -77,6 +91,7 @@ int main(int argc, char** argv)
 
     if (isVideo) {
         cv::VideoCapture cap(path);
+        //cv::VideoCapture cap(0);
 
         if (!cap.isOpened()) {
             printf("can not open %s\n", path.c_str());
@@ -90,6 +105,54 @@ int main(int argc, char** argv)
             auto end = std::chrono::system_clock::now();
             yolov8->postprocess(objs);
             yolov8->draw_objects(image, res, objs, CLASS_NAMES, COLORS);
+			for (auto& obj : objs) {
+				cv::Scalar color = cv::Scalar(COLORS[obj.label][0], COLORS[obj.label][1], COLORS[obj.label][2]);
+				cv::rectangle(res, obj.rect, color, 2);
+				// top: 0, down: 1, left: 2, right: 3
+				char text[256];
+				int      baseLine   = 0;
+				cv::Size label_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.4, 2, &baseLine);
+				if (obj.label == 0 || obj.label == 1)
+				{
+					if (obj.rect.x < 310 ) //left
+					{
+						w_buf[1]= 0x2; //left
+						sprintf(text, "%s %.1f%%, left ", CLASS_NAMES[obj.label].c_str(), obj.prob * 100);
+					cv::putText(res, text, cv::Point(20, 10), cv::FONT_HERSHEY_SIMPLEX, 0.4, {255, 255, 0}, 1);
+					}
+
+					if (obj.rect.x > 330) 
+					{
+						w_buf[1]= 0x3; //right
+						sprintf(text, "%s %.1f%%, right ", CLASS_NAMES[obj.label].c_str(), obj.prob * 100);
+					cv::putText(res, text, cv::Point(20, 30), cv::FONT_HERSHEY_SIMPLEX, 0.4, {255, 0, 0}, 1);
+					}
+					if (obj.rect.y < 310) 
+					{
+						w_buf[1]= 0x0; //top
+						sprintf(text, "%s  %.1f%%, top ", CLASS_NAMES[obj.label].c_str(), obj.prob * 100);
+					cv::putText(res, text, cv::Point(20, 50), cv::FONT_HERSHEY_SIMPLEX, 0.4, {0, 255, 0}, 1);
+					}
+
+					if (obj.rect.y > 330) 
+					{
+						w_buf[1]= 0x1; // down
+						sprintf(text, "%s %.1f%%, down ", CLASS_NAMES[obj.label].c_str(), obj.prob * 100);
+					cv::putText(res, text, cv::Point(20, 70), cv::FONT_HERSHEY_SIMPLEX, 0.4, {255, 0, 255}, 1);
+					}
+
+					w_buf[0]= obj.label;
+					ret = uart_write(fd,w_buf,2);
+					if(ret == -1)
+					{
+						fprintf(stderr,"uart write failed!\n");
+						exit(EXIT_FAILURE);
+					}
+
+
+				}
+			}
+
             auto tc = (double)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.;
             printf("cost %2.4lf ms\n", tc);
             cv::imshow("result", res);
@@ -114,6 +177,8 @@ int main(int argc, char** argv)
             cv::waitKey(0);
         }
     }
+
+	uart_close(fd);
     cv::destroyAllWindows();
     delete yolov8;
     return 0;
